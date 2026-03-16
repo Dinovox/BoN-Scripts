@@ -69,12 +69,14 @@ Usage:
     --dry-run
 """
 import argparse
+import json
 import sys
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
-from multiversx_sdk import Address, Transaction, TransactionComputer
+from multiversx_sdk import Address, AddressComputer, Transaction, TransactionComputer
 
 import config
 import utils
@@ -89,12 +91,12 @@ GAS_EGLD_TOPUP = 50_000
 GAS_ESDT_TOPUP = 500_000
 
 
-def get_egld_balance(address_bech32: str, gateway_url: str) -> int:
-    """Retourne la balance EGLD en raw (int)."""
+def get_egld_balance(address_bech32: str, gateway_url: str) -> tuple[int, int]:
+    """Retourne (balance EGLD en raw, nonce)."""
     r = requests.get(f"{gateway_url.rstrip('/')}/address/{address_bech32}", timeout=10)
     r.raise_for_status()
     data = r.json().get("data", {}).get("account", {})
-    return int(data.get("balance", 0))
+    return int(data.get("balance", 0)), int(data.get("nonce", 0))
 
 
 def get_esdt_balances(address_bech32: str, gateway_url: str) -> dict[str, int]:
@@ -124,22 +126,47 @@ def build_esdt_data(token_id: str, amount_raw: int) -> bytes:
     return f"ESDTTransfer@{token_id.encode().hex()}@{encode_amount_hex(amount_raw)}".encode()
 
 
+_address_computer = AddressComputer(number_of_shards=3)
+
+
+def get_shard(address: Address) -> int:
+    return _address_computer.get_shard_of_address(address)
+
+
+def expected_shard_from_path(pem_path: str) -> int | None:
+    """Extrait la shard attendue depuis le nom du dossier (ex: shard-1 → 1)."""
+    import re
+    for part in Path(pem_path).parts:
+        m = re.match(r"shard-(\d+)", part)
+        if m:
+            return int(m.group(1))
+    return None
+
+
 def check_wallet(pem_path: str, tokens: list[str], gateway_url: str) -> dict:
     """Fetch toutes les balances pour un wallet. Retourne un dict de résultats."""
     try:
         signer = utils.load_signer(pem_path)
         address = utils.get_address(signer)
         bech32 = address.to_bech32()
+        shard = get_shard(address)
 
-        egld_raw = get_egld_balance(bech32, gateway_url)
+        expected = expected_shard_from_path(pem_path)
+        wrong_dir = expected is not None and shard != expected
+
+        egld_raw, nonce = get_egld_balance(bech32, gateway_url)
         esdt_all = get_esdt_balances(bech32, gateway_url)
 
         token_balances = {t: esdt_all.get(t, 0) for t in tokens}
 
+        prefix = f"[!shard{expected}→{shard}]" if wrong_dir else f"{shard}_"
         return {
-            "name": Path(pem_path).name,
+            "name": f"{prefix}{Path(pem_path).name}",
+            "shard": shard,
+            "wrong_dir": wrong_dir,
             "address": bech32,
             "egld": egld_raw,
+            "nonce": nonce,
             "tokens": token_balances,
             "error": None,
         }
@@ -148,7 +175,9 @@ def check_wallet(pem_path: str, tokens: list[str], gateway_url: str) -> dict:
             "name": Path(pem_path).name,
             "address": "?",
             "egld": 0,
+            "nonce": -1,
             "tokens": {t: 0 for t in tokens},
+            "wrong_dir": False,
             "error": str(e),
         }
 
@@ -173,6 +202,8 @@ def main():
                         help="Seuil ESDT minimum (répétable) : --min-esdt WEGLD-bd4d79 0.05")
     parser.add_argument("--dry-run", action="store_true",
                         help="Construire/afficher les top-ups sans envoyer")
+    parser.add_argument("--save", default=None, metavar="FILE",
+                        help="Enregistrer les balances dans un fichier JSON (ex: balances.json)")
     parser.add_argument("--gateway", default=config.GATEWAY_URL)
     args = parser.parse_args()
 
@@ -221,13 +252,18 @@ def main():
     for t in threads:
         t.join()
 
+    # Tri par shard puis par nom de fichier
+    results.sort(key=lambda r: (r["shard"] if r["error"] is None else 99, r["name"]))
+
     # Affichage
-    col_addr = 20
+    col_addr = 62
     col_egld = 14
     col_tok = 14
 
+    col_nonce = 8
+
     # Header
-    header = f"{'Wallet':<20} {'Address':<20} {'EGLD':>{col_egld}}"
+    header = f"{'Wallet':<20} {'Address':<{col_addr}} {'EGLD':>{col_egld}} {'Nonce':>{col_nonce}}"
     for tok in tokens:
         label = tok.split("-")[0]  # ex: WEGLD
         header += f"  {label:>{col_tok}}"
@@ -235,6 +271,7 @@ def main():
     print("-" * len(header))
 
     totals_egld = 0
+    totals_nonce = 0
     totals_tokens = {t: 0 for t in tokens}
 
     for r in results:
@@ -242,24 +279,54 @@ def main():
             print(f"{'!' + r['name']:<20} {'ERROR':<20} {r['error']}")
             continue
 
-        addr_short = r["address"][:8] + "…" + r["address"][-6:]
-        line = f"{r['name']:<20} {addr_short:<20} {fmt(r['egld']):>{col_egld}}"
+        line = f"{r['name']:<20} {r['address']:<{col_addr}} {fmt(r['egld']):>{col_egld}} {r['nonce']:>{col_nonce}}"
         for tok in tokens:
             dec = TOKEN_DECIMALS.get(tok, 18)
             line += f"  {fmt(r['tokens'][tok], decimals=dec):>{col_tok}}"
         print(line)
 
         totals_egld += r["egld"]
+        totals_nonce += r["nonce"]
         for tok in tokens:
             totals_tokens[tok] += r["tokens"][tok]
 
     # Totaux
     print("-" * len(header))
-    total_line = f"{'TOTAL':<20} {'':<20} {fmt(totals_egld):>{col_egld}}"
+    total_line = f"{'TOTAL':<20} {'':<{col_addr}} {fmt(totals_egld):>{col_egld}} {totals_nonce:>{col_nonce}}"
     for tok in tokens:
         dec = TOKEN_DECIMALS.get(tok, 18)
         total_line += f"  {fmt(totals_tokens[tok], decimals=dec):>{col_tok}}"
     print(total_line)
+
+    # Sauvegarde JSON
+    if args.save:
+        snapshot = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "gateway": args.gateway,
+            "wallets": [
+                {
+                    "name": r["name"],
+                    "address": r["address"],
+                    "shard": r.get("shard"),
+                    "egld": fmt(r["egld"]),
+                    "egld_raw": r["egld"],
+                    "nonce": r["nonce"],
+                    "tokens": {t: fmt(v, decimals=TOKEN_DECIMALS.get(t, 18)) for t, v in r["tokens"].items()},
+                    "tokens_raw": r["tokens"],
+                    "error": r["error"],
+                }
+                for r in results
+            ],
+        }
+        Path(args.save).write_text(json.dumps(snapshot, indent=2, ensure_ascii=False))
+        print(f"\n[SAVE] {len(results)} wallets → {args.save}")
+
+    # Avertissement wallets mal classés
+    wrong = [r for r in results if r.get("wrong_dir")]
+    if wrong:
+        print(f"\n[WARN] {len(wrong)} wallet(s) dans le mauvais dossier shard :")
+        for r in wrong:
+            print(f"  {r['name']}  →  real shard {r['shard']}  |  {r['address']}")
 
     # --- Top-up ---
     if not topup_enabled:
@@ -296,7 +363,7 @@ def main():
         if min_egld_raw is not None and r["egld"] < min_egld_raw:
             deficit = min_egld_raw - r["egld"]
             tag = "[DRY-RUN]" if args.dry_run else "[TOPUP]"
-            print(f"{tag} EGLD → {r['name']} ({r['address'][:12]}…) "
+            print(f"{tag} EGLD → {r['name']} ({r['address']}) "
                   f"+{fmt(deficit)} EGLD (balance: {fmt(r['egld'])})")
             tx = Transaction(
                 nonce=nonce,
@@ -325,7 +392,7 @@ def main():
                 deficit = min_raw - current
                 dec = TOKEN_DECIMALS.get(token_id, 18)
                 tag = "[DRY-RUN]" if args.dry_run else "[TOPUP]"
-                print(f"{tag} {token_id.split('-')[0]} → {r['name']} ({r['address'][:12]}…) "
+                print(f"{tag} {token_id.split('-')[0]} → {r['name']} ({r['address']}) "
                       f"+{fmt(deficit, decimals=dec)} (balance: {fmt(current, decimals=dec)})")
                 tx = Transaction(
                     nonce=nonce,

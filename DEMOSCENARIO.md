@@ -15,7 +15,8 @@ python fund_wallets.py \
 --wallets-dir ./demo-wallets/shard-1 \
 --wallets-dir ./demo-wallets/shard-2 \
 --amount 0.1 \
---max-wallets 500
+--max-wallets 500 \
+--dry-run
 
 #CHECK BALANCES
 
@@ -24,7 +25,7 @@ python check_balances.py \
  --wallets-dir ./demo-wallets/shard-1 \
  --wallets-dir ./demo-wallets/shard-2 \
  --from-wallet ./wallets/bon_supernova.pem \
- --max-wallets 100 \
+ --max-wallets 500 \
  --min-egld 0.1 \
  --dry-run
 

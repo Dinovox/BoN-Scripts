@@ -641,3 +641,5 @@ python query_sc.py --contract erd1qqq...ylll --function getContractConfig
 --json               Sortie JSON brute
 --gateway URL
 ```
+
+ssh -N -L 8080:localhost:8080 -L 8081:localhost:8081 -L 8082:localhost:8082 mvxobs@192.168.1.23
