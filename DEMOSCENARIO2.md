@@ -31,9 +31,9 @@ python fund_wallets_2.py \
 python fund_wallets_2.py \
  --from-wallet ./wallets/bon_supernova.pem \
  --wallets-dir ./win3-wallets/shard-0 \
- --wallets-dir ./win3-wallets/shard-& \
+ --wallets-dir ./win3-wallets/shard-1 \
  --wallets-dir ./win3-wallets/shard-2 \
- --amount 1
+--amount 1
 
 #CHECK BALANCES
 
@@ -43,7 +43,9 @@ python check_balances.py \
  --wallets-dir ./win4-wallets/shard-0 \
  --from-wallet ./wallets/bon_supernova.pem \
  --max-wallets 500 \
- --min-egld 1 \
+ --gateway http://192.168.1.23:8079
+
+--min-egld 1 \
  --dry-run
 
 python check_balances.py \
@@ -79,7 +81,6 @@ python stress_burn_egld_4.py \
 --wallets-dir ./win4-wallets/shard-2 \
 --max-wallets 500 \
 --batch-size 95 \
---gateway 90.12.225.178:8079 \
 --dry-run
 
 python stress_burn_egld.py \
