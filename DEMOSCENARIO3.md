@@ -1,105 +1,136 @@
-#### DEMO SCENARIO
+# DEMO SCENARIO 3
 
-used from 24h window
+Window challenge — 1,000,000 MoveBalance transactions (intra + cross-shard).
 
-##### GENERATE WALLETS
+---
 
-# 500 WALLE slpited into 3 Shards
+## 1. GENERATE WALLETS
 
+500 wallets split across 3 shards.
+
+```bash
 python generate_wallets_2.py \
---num-shards 3 --output-dir ./spam-wallets \
---total 500
+  --num-shards 3 \
+  --output-dir ./spam-wallets \
+  --total 500
+```
 
-##### FUNDS WALLETS
+---
 
-# this may fail try run each commands once then check ballance
+## 2. FUND WALLETS
+
+> May fail due to gateway 502 or pool drops. Run each shard separately, then check balances.
+
+```bash
+python fund_wallets_2.py \
+  --from-wallet ./wallets/bon_supernova.pem \
+  --wallets-dir ./spam-wallets/shard-0 \
+  --amount 1
 
 python fund_wallets_2.py \
- --from-wallet ./wallets/bon_supernova.pem \
- --wallets-dir ./spam-wallets/shard-0 \
- --amount 1
+  --from-wallet ./wallets/bon_supernova.pem \
+  --wallets-dir ./spam-wallets/shard-1 \
+  --amount 1
 
 python fund_wallets_2.py \
- --from-wallet ./wallets/bon_supernova.pem \
- --wallets-dir ./spam-wallets/shard-1 \
- --amount 1
+  --from-wallet ./wallets/bon_supernova.pem \
+  --wallets-dir ./spam-wallets/shard-2 \
+  --amount 1
+```
 
+Or all shards at once (dry-run first):
+
+```bash
 python fund_wallets_2.py \
- --from-wallet ./wallets/bon_supernova.pem \
- --wallets-dir ./spam-wallets/shard-2 \
- --amount 1
+  --from-wallet ./wallets/bon_supernova.pem \
+  --wallets-dir ./spam-wallets/shard-0 \
+  --wallets-dir ./spam-wallets/shard-1 \
+  --wallets-dir ./spam-wallets/shard-2 \
+  --amount 1 \
+  --dry-run
+```
 
-# you may try to feed all wallets in one time if fail run check balance
+---
 
-python fund_wallets_2.py \
- --from-wallet ./wallets/bon_supernova.pem \
- --wallets-dir ./spam-wallets/shard-0 \
- --wallets-dir ./spam-wallets/shard-1 \
- --wallets-dir ./spam-wallets/shard-2 \
---amount 2 --gateway 192.168.1.23:8079 \
---dry-run
+## 3. CHECK BALANCES
 
-##### CHECK BALANCES
+> Remove `--min-egld` to display balances without topping up.
 
-# inital funding may fail because of gateway 502 or pool drop
-
-# remove --min-egld 1 to check balance without funding
-
+```bash
 python check_balances_3.py \
- --wallets-dir ./spam-wallets/shard-0 \
- --wallets-dir ./spam-wallets/shard-1 \
- --wallets-dir ./spam-wallets/shard-2 \
- --from-wallet ./wallets/bon_supernova.pem \
- --max-wallets 500 \
- --min-egld 1
+  --wallets-dir ./spam-wallets/shard-0 \
+  --wallets-dir ./spam-wallets/shard-1 \
+  --wallets-dir ./spam-wallets/shard-2 \
+  --from-wallet ./wallets/bon_supernova.pem \
+  --max-wallets 500 \
+  --min-egld 1
+```
 
-##### SEND TRANSACTIONS
+---
 
-# This part is still challenging work quite well under normal loads.
+## 4. SEND TRANSACTIONS
 
-# may fail once pool is full with missed nonce.
+> - May fail if the pool is full with a missed nonce gap.
+> - The rich-balance strategy can lag if one shard falls behind.
+> - If the script slows down, do NOT stop it — it would lose track of submitted nonces. Use `check_mempool.py` to inspect address state first.
 
-# rich balance strat could fail if one of the shard is left behing
-
-# may send only few dust to prevent bad rebalance instead of gas price as min
-
-# script may slow down at some point dont stop it or it will loose track of submitted nonce under pressure. use check_mempool to see state of some addresss first
-
+```bash
 python stress_mixed_v2.py \
---wallets-dir ./spam-wallets/shard-0 \
---wallets-dir ./spam-wallets/shard-1 \
---wallets-dir ./spam-wallets/shard-2 \
---max-wallets 500 \
---batch-size 95
+  --wallets-dir ./spam-wallets/shard-0 \
+  --wallets-dir ./spam-wallets/shard-1 \
+  --wallets-dir ./spam-wallets/shard-2 \
+  --max-wallets 500 \
+  --batch-size 95
+```
 
-# use --cross-ratio 1 to send only cross-shard tx (requier at least 2 wallet-dir)
+> Use `--cross-ratio 1` to send only cross-shard transactions (requires at least 2 `--wallets-dir`).
 
-#### BALANCE REFUND
+---
 
-# any time you may refund lowe balance if ping pong strategy fail
+## 5. REFUND LOW BALANCES
 
+Top up wallets that have been drained by the ping-pong strategy.
+
+```bash
 python check_balances_3.py \
- --wallets-dir ./spam-wallets/shard-0 \
- --wallets-dir ./spam-wallets/shard-1 \
- --wallets-dir ./spam-wallets/shard-2 \
- --from-wallet ./wallets/bon_supernova.pem \
- --max-wallets 500 \
- --min-egld 1
+  --wallets-dir ./spam-wallets/shard-0 \
+  --wallets-dir ./spam-wallets/shard-1 \
+  --wallets-dir ./spam-wallets/shard-2 \
+  --from-wallet ./wallets/bon_supernova.pem \
+  --max-wallets 500 \
+  --min-egld 1
+```
 
-#### EMPTY ALL WALLETS
+---
 
-# from challenges sending them to a temporay wallet
+## 6. DRAIN ALL WALLETS
 
-# if you are using this script change this address or i will be RICH !
+Send remaining funds back to a target address.
 
+> **Change the `--to` address or I will be RICH!**
+
+```bash
 python drain_wallets.py \
- --wallets-dir ./spam-wallets/shard-0 \
- --wallets-dir ./spam-wallets/shard-1 \
- --wallets-dir ./spam-wallets/shard-2 \
- --to erd1f60kcmly42f6l9v90l9f0s0rq5dja8lvcuuu7hm3hr3skyae0hgq0mfmnl
+  --wallets-dir ./spam-wallets/shard-0 \
+  --wallets-dir ./spam-wallets/shard-1 \
+  --wallets-dir ./spam-wallets/shard-2 \
+  --to erd1f60kcmly42f6l9v90l9f0s0rq5dja8lvcuuu7hm3hr3skyae0hgq0mfmnl
+```
 
-#### CHECK AN ADDRESS POOL OF TRANSACTION
+---
 
-#### Work in progress
+## 7. CHECK MEMPOOL
 
-python check_mempool.py --address erd1nzt08ur6xvnlqv0wyp9uqcuhpgpsnz8lnj8sydsrxl9q5fjvazxslvgk7z
+Inspect pending transactions for any address.
+
+```bash
+python check_mempool.py \
+  --address erd1nzt08ur6xvnlqv0wyp9uqcuhpgpsnz8lnj8sydsrxl9q5fjvazxslvgk7z
+
+# Or from a PEM file
+python check_mempool.py --pem ./spam-wallets/shard-0/wallet_014.pem
+
+# Via local gateway
+python check_mempool.py \
+  --address erd1nzt08ur6xvnlqv0wyp9uqcuhpgpsnz8lnj8sydsrxl9q5fjvazxslvgk7z
+```
