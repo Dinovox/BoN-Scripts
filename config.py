@@ -1,5 +1,5 @@
 # Configuration réseau Battle of Nodes (BoN)
-GATEWAY_URL = "https://gateway.battleofnodes.com/"
+GATEWAY_URL = "https://gateway.battleofnodes.com"
 
 CHAIN_ID = "B"
 DEFAULT_GAS_PRICE = 1_000_000_000
@@ -17,5 +17,7 @@ NODE_BASE_PORT   = 8080   # shard 0 → 8080, shard 1 → 8081, shard 2 → 8082
 NODE_POOL_FIELD  = "erd_tx_pool_load"
 
 # Wrapping EGLD → WEGLD (SC par shard — utiliser celui du shard du sender)
-WEGLD_WRAP_SC_SHARD1 = "erd1qqqqqqqqqqqqqpgqhe8t5jewej70zupmh44jurgn29psua5l2jps3ntjj3"
+WEGLD_WRAP_SC_SHARD =["erd1qqqqqqqqqqqqqpgqvc7gdl0p4s97guh498wgz75k8sav6sjfjlwqh679jy", "erd1qqqqqqqqqqqqqpgqhe8t5jewej70zupmh44jurgn29psua5l2jps3ntjj3","erd1qqqqqqqqqqqqqpgqmuk0q2saj0mgutxm4teywre6dl8wqf58xamqdrukln"]
 
+
+WEGLD_USDC_SC_POOL = "erd1qqqqqqqqqqqqqpgqeel2kumf0r8ffyhth7pqdujjat9nx0862jpsg2pqaq"

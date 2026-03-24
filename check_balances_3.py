@@ -294,12 +294,16 @@ def main():
     tokens      = args.tokens if args.tokens else DEFAULT_TOKENS
     fetch_esdt  = bool(args.min_esdt or args.tokens)  # skip si pas besoin
 
-    # Collecter tous les .pem
+    # Collecter tous les .pem — max_wallets distribué équitablement entre les dossiers.
+    # Ex : max_wallets=100, 3 dossiers → 34 + 33 + 33
     all_pems = []
-    for d in (args.wallets_dirs or []):
+    dirs = args.wallets_dirs or []
+    n_dirs = len(dirs)
+    for i, d in enumerate(dirs):
         pems = sorted(Path(d).expanduser().rglob("*.pem"))
-        if args.max_wallets:
-            pems = pems[:args.max_wallets]
+        if args.max_wallets and n_dirs > 0:
+            base, extra = divmod(args.max_wallets, n_dirs)
+            pems = pems[:base + (1 if i < extra else 0)]
         all_pems.extend([str(p) for p in pems])
 
     for pem in (args.relayers or []):

@@ -32,7 +32,7 @@ def main():
                         help="Wallet PEM (défaut: ./wallets/bon_supernova.pem)")
     parser.add_argument("--amount", type=float, required=True,
                         help="Montant EGLD à wrapper")
-    parser.add_argument("--wrap-sc", default=config.WEGLD_WRAP_SC_SHARD1,
+    parser.add_argument("--wrap-sc", default=config.WEGLD_WRAP_SC_SHARD[1],
                         help="Adresse du smart contract de wrapping")
     parser.add_argument("--gas", type=int, default=GAS_WRAP,
                         help=f"Gas limit (défaut: {GAS_WRAP:,})")

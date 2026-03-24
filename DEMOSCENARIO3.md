@@ -125,12 +125,13 @@ Inspect pending transactions for any address.
 
 ```bash
 python check_mempool.py \
-  --address erd1nzt08ur6xvnlqv0wyp9uqcuhpgpsnz8lnj8sydsrxl9q5fjvazxslvgk7z
+  --address erd1nxa6uvstr5v0fk075nreszmmtzgqcj85pqm79hdujdudpnk57qlq487zzf
 
 # Or from a PEM file
 python check_mempool.py --pem ./spam-wallets/shard-0/wallet_014.pem
 
 # Via local gateway
 python check_mempool.py \
-  --address erd1nzt08ur6xvnlqv0wyp9uqcuhpgpsnz8lnj8sydsrxl9q5fjvazxslvgk7z
+  --gateway http://192.168.1.23:8079 \
+  --address erd1nxa6uvstr5v0fk075nreszmmtzgqcj85pqm79hdujdudpnk57qlq487zzf
 ```
