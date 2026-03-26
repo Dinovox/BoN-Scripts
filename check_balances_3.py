@@ -60,6 +60,13 @@ TOKEN_DECIMALS: dict[str, int] = {
 MAX_THREADS    = 10   # réduit de 20 à 10 pour ménager le gateway
 GAS_EGLD_TOPUP = 50_000
 GAS_ESDT_TOPUP = 500_000
+GAS_WRAP       = 3_000_000
+
+WEGLD_WRAP_SC = {
+    0: "erd1qqqqqqqqqqqqqpgqvc7gdl0p4s97guh498wgz75k8sav6sjfjlwqh679jy",
+    1: "erd1qqqqqqqqqqqqqpgqhe8t5jewej70zupmh44jurgn29psua5l2jps3ntjj3",
+    2: "erd1qqqqqqqqqqqqqpgqmuk0q2saj0mgutxm4teywre6dl8wqf58xamqdrukln",
+}
 
 HTTP_TIMEOUT    = 10    # secondes
 HTTP_RETRIES    = 3
@@ -174,6 +181,7 @@ def check_wallet(pem_path: str, tokens: list[str], gateway_url: str,
             "egld":      egld_raw,
             "nonce":     nonce,
             "tokens":    token_balances,
+            "pem_path":  pem_path,
             "error":     None,
         }
     except Exception as e:
@@ -201,6 +209,23 @@ def build_and_sign_egld_tx(signer, computer, nonce: int, sender, receiver,
         value=value,
         gas_limit=GAS_EGLD_TOPUP,
         data=b"",
+        chain_id=config.CHAIN_ID,
+        gas_price=config.DEFAULT_GAS_PRICE,
+        version=config.DEFAULT_TX_VERSION,
+    )
+    tx.signature = signer.sign(computer.compute_bytes_for_signing(tx))
+    return tx
+
+
+def build_and_sign_wrap_tx(signer, computer, nonce: int, sender,
+                            wrap_sc: Address, amount: int) -> Transaction:
+    tx = Transaction(
+        nonce=nonce,
+        sender=sender,
+        receiver=wrap_sc,
+        value=amount,
+        gas_limit=GAS_WRAP,
+        data=b"wrapEgld",
         chain_id=config.CHAIN_ID,
         gas_price=config.DEFAULT_GAS_PRICE,
         version=config.DEFAULT_TX_VERSION,
@@ -277,6 +302,9 @@ def main():
     parser.add_argument("--min-esdt", nargs=2, action="append",
                         metavar=("TOKEN_ID", "AMOUNT"), default=None,
                         help="Seuil ESDT minimum (répétable)")
+    parser.add_argument("--wrap-wegld", type=float, default=None, metavar="AMOUNT",
+                        help="Wrap l'EGLD manquant depuis chaque wallet sous le seuil WEGLD "
+                             "(ex: 0.1). Chaque wallet wrape lui-même, sans --from-wallet.")
     parser.add_argument("--dry-run", action="store_true",
                         help="Construire/afficher les top-ups sans envoyer")
     parser.add_argument("--save", default=None, metavar="FILE",
@@ -287,12 +315,13 @@ def main():
     if not args.wallets_dirs and not args.relayers:
         parser.error("Fournir au moins --wallets-dir ou --relayer")
 
-    topup_enabled = args.min_egld is not None or args.min_esdt is not None
-    if topup_enabled and not args.from_wallet:
+    wrap_wegld_mode = args.wrap_wegld is not None
+    topup_enabled   = args.min_egld is not None or args.min_esdt is not None or wrap_wegld_mode
+    if topup_enabled and not wrap_wegld_mode and not args.from_wallet:
         parser.error("--from-wallet est requis avec --min-egld ou --min-esdt")
 
     tokens      = args.tokens if args.tokens else DEFAULT_TOKENS
-    fetch_esdt  = bool(args.min_esdt or args.tokens)  # skip si pas besoin
+    fetch_esdt  = bool(args.min_esdt or args.tokens or wrap_wegld_mode)  # skip si pas besoin
 
     # Collecter tous les .pem — max_wallets distribué équitablement entre les dossiers.
     # Ex : max_wallets=100, 3 dossiers → 34 + 33 + 33
@@ -424,64 +453,77 @@ def main():
     else:
         print("[INFO] Top-up en cours...\n")
 
-    from_signer  = utils.load_signer(args.from_wallet)
-    from_address = utils.get_address(from_signer)
-    from_bech32  = from_address.to_bech32()
-    provider     = utils.get_provider(args.gateway)
-    computer     = TransactionComputer()
+    provider  = utils.get_provider(args.gateway)
+    computer  = TransactionComputer()
 
-    nonce_ref    = [utils.get_account_nonce(provider, from_address)]
     topup_count  = 0
     topup_failed = 0
 
-    min_egld_raw  = int(args.min_egld * EGLD_DECIMALS) if args.min_egld is not None else None
-    min_esdt_list = []
-    for token_id, amount_str in (args.min_esdt or []):
-        dec = TOKEN_DECIMALS.get(token_id, 18)
-        min_esdt_list.append((token_id, int(float(amount_str) * (10 ** dec))))
-
-    for r in results:
-        if r["error"] or r["address"] == from_bech32:
-            continue
-
-        receiver = Address.new_from_bech32(r["address"])
-
-        # EGLD top-up
-        if min_egld_raw is not None and r["egld"] < min_egld_raw:
-            deficit = min_egld_raw - r["egld"]
-            tag = "[DRY-RUN]" if args.dry_run else "[TOPUP]"
-            print(f"{tag} EGLD → {r['name']} ({r['address']}) "
-                  f"+{fmt(deficit)} EGLD (balance: {fmt(r['egld'])})")
-            tx = build_and_sign_egld_tx(
-                from_signer, computer, nonce_ref[0], from_address, receiver, deficit
-            )
-            topup_count += 1
-            if args.dry_run:
-                nonce_ref[0] += 1
-            else:
+    # --- Mode wrap-wegld : chaque wallet wrape lui-même ---
+    if wrap_wegld_mode:
+        min_raw = int(args.wrap_wegld * EGLD_DECIMALS)
+        for r in results:
+            if r["error"]:
+                continue
+            current = r["tokens"].get("WEGLD-bd4d79", 0)
+            if current >= min_raw:
+                continue
+            deficit = min_raw - current
+            gas_cost = GAS_WRAP * config.DEFAULT_GAS_PRICE
+            if r["egld"] < deficit + gas_cost:
+                print(f"[SKIP] {r['name']} : EGLD insuffisant pour wrap "
+                      f"({fmt(r['egld'])} < {fmt(deficit + gas_cost)})")
+                continue
+            shard = r.get("shard", 0)
+            wrap_sc = Address.new_from_bech32(WEGLD_WRAP_SC[shard])
+            tag = "[DRY-RUN]" if args.dry_run else "[WRAP]"
+            dec = TOKEN_DECIMALS.get("WEGLD-bd4d79", 18)
+            print(f"{tag} wrapEgld {r['name']} ({r['address']}) "
+                  f"+{fmt(deficit, decimals=dec)} WEGLD (balance: {fmt(current, decimals=dec)})")
+            if not args.dry_run:
+                wallet_signer  = utils.load_signer(r["pem_path"])
+                wallet_address = utils.get_address(wallet_signer)
+                nonce_ref      = [r["nonce"]]
+                tx = build_and_sign_wrap_tx(
+                    wallet_signer, computer, nonce_ref[0], wallet_address, wrap_sc, deficit
+                )
                 ok = send_with_retry(
-                    tx, provider, from_signer, computer, nonce_ref, from_address,
-                    rebuild_fn=lambda nonce, **kw: build_and_sign_egld_tx(
-                        from_signer, computer, nonce, from_address, receiver, deficit
+                    tx, provider, wallet_signer, computer, nonce_ref, wallet_address,
+                    rebuild_fn=lambda nonce, **kw: build_and_sign_wrap_tx(
+                        wallet_signer, computer, nonce, wallet_address, wrap_sc, deficit
                     ),
                     rebuild_kwargs={},
-                    label=f"EGLD→{r['name']}",
+                    label=f"wrap→{r['name']}",
                 )
                 if not ok:
                     topup_failed += 1
+            topup_count += 1
+    else:
+        from_signer  = utils.load_signer(args.from_wallet)
+        from_address = utils.get_address(from_signer)
+        from_bech32  = from_address.to_bech32()
+        nonce_ref    = [utils.get_account_nonce(provider, from_address)]
 
-        # ESDT top-up
-        for token_id, min_raw in min_esdt_list:
-            current = r["tokens"].get(token_id, 0)
-            if current < min_raw:
-                deficit = min_raw - current
-                dec = TOKEN_DECIMALS.get(token_id, 18)
+        min_egld_raw  = int(args.min_egld * EGLD_DECIMALS) if args.min_egld is not None else None
+        min_esdt_list = []
+        for token_id, amount_str in (args.min_esdt or []):
+            dec = TOKEN_DECIMALS.get(token_id, 18)
+            min_esdt_list.append((token_id, int(float(amount_str) * (10 ** dec))))
+
+        for r in results:
+            if r["error"] or r["address"] == from_bech32:
+                continue
+
+            receiver = Address.new_from_bech32(r["address"])
+
+            # EGLD top-up
+            if min_egld_raw is not None and r["egld"] < min_egld_raw:
+                deficit = min_egld_raw - r["egld"]
                 tag = "[DRY-RUN]" if args.dry_run else "[TOPUP]"
-                print(f"{tag} {token_id.split('-')[0]} → {r['name']} ({r['address']}) "
-                      f"+{fmt(deficit, decimals=dec)} (balance: {fmt(current, decimals=dec)})")
-                tx = build_and_sign_esdt_tx(
-                    from_signer, computer, nonce_ref[0], from_address, receiver,
-                    token_id, deficit
+                print(f"{tag} EGLD → {r['name']} ({r['address']}) "
+                      f"+{fmt(deficit)} EGLD (balance: {fmt(r['egld'])})")
+                tx = build_and_sign_egld_tx(
+                    from_signer, computer, nonce_ref[0], from_address, receiver, deficit
                 )
                 topup_count += 1
                 if args.dry_run:
@@ -489,15 +531,43 @@ def main():
                 else:
                     ok = send_with_retry(
                         tx, provider, from_signer, computer, nonce_ref, from_address,
-                        rebuild_fn=lambda nonce, **kw: build_and_sign_esdt_tx(
-                            from_signer, computer, nonce, from_address, receiver,
-                            token_id, deficit
+                        rebuild_fn=lambda nonce, **kw: build_and_sign_egld_tx(
+                            from_signer, computer, nonce, from_address, receiver, deficit
                         ),
                         rebuild_kwargs={},
-                        label=f"{token_id.split('-')[0]}→{r['name']}",
+                        label=f"EGLD→{r['name']}",
                     )
                     if not ok:
                         topup_failed += 1
+
+            # ESDT top-up
+            for token_id, min_raw in min_esdt_list:
+                current = r["tokens"].get(token_id, 0)
+                if current < min_raw:
+                    deficit = min_raw - current
+                    dec = TOKEN_DECIMALS.get(token_id, 18)
+                    tag = "[DRY-RUN]" if args.dry_run else "[TOPUP]"
+                    print(f"{tag} {token_id.split('-')[0]} → {r['name']} ({r['address']}) "
+                          f"+{fmt(deficit, decimals=dec)} (balance: {fmt(current, decimals=dec)})")
+                    tx = build_and_sign_esdt_tx(
+                        from_signer, computer, nonce_ref[0], from_address, receiver,
+                        token_id, deficit
+                    )
+                    topup_count += 1
+                    if args.dry_run:
+                        nonce_ref[0] += 1
+                    else:
+                        ok = send_with_retry(
+                            tx, provider, from_signer, computer, nonce_ref, from_address,
+                            rebuild_fn=lambda nonce, **kw: build_and_sign_esdt_tx(
+                                from_signer, computer, nonce, from_address, receiver,
+                                token_id, deficit
+                            ),
+                            rebuild_kwargs={},
+                            label=f"{token_id.split('-')[0]}→{r['name']}",
+                        )
+                        if not ok:
+                            topup_failed += 1
 
     tag     = "[DRY-RUN]" if args.dry_run else "[DONE]"
     summary = f"{topup_count} top-up(s) {'préparés' if args.dry_run else 'envoyés'}"

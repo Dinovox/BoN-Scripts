@@ -46,29 +46,26 @@ def fetch_pool(base_url: str, bech32: str, timeout: int = 10) -> list[dict]:
     Retourne la liste des txs en attente pour ce sender.
     Endpoint : /transaction/pool?by-sender={bech32}
     """
-    url = f"{base_url.rstrip('/')}/transaction/pool?by-sender={bech32}"
+    url = (f"{base_url.rstrip('/')}/transaction/pool"
+           f"?by-sender={bech32}"
+           f"&fields=hash,nonce,sender,receiver,value,gasprice,gaslimit")
     r = requests.get(url, timeout=timeout)
     r.raise_for_status()
     data = r.json()
 
-    # Le node retourne soit {"data": {"txPool": {...}}} soit {"data": [tx, ...]}
-    # selon la version. On gère les deux formats.
-    inner = data.get("data", {})
+    inner   = data.get("data", {})
+    tx_pool = inner.get("txPool", inner) if isinstance(inner, dict) else {}
 
-    if isinstance(inner, list):
-        return inner
-
-    # Format node : {"txPool": {"regularTransactions": [...], "smartContractResults": [...]}}
-    tx_pool = inner.get("txPool", inner)
     txs = []
     for key in ("regularTransactions", "transactions"):
         chunk = tx_pool.get(key, [])
-        if isinstance(chunk, list):
-            txs.extend(chunk)
-        elif isinstance(chunk, dict):
-            txs.extend(chunk.values())
+        if isinstance(chunk, dict):
+            chunk = list(chunk.values())
+        for item in chunk:
+            # gateway wraps les champs sous "txFields"
+            txs.append(item.get("txFields", item))
 
-    return txs
+    return txs if txs else (inner if isinstance(inner, list) else [])
 
 
 def display_pool(txs: list[dict], bech32: str, source_url: str, shard: int | None):
@@ -99,7 +96,7 @@ def display_pool(txs: list[dict], bech32: str, source_url: str, shard: int | Non
         nonce    = tx.get("nonce", "?")
         value    = tx.get("value", "0")
         receiver = tx.get("receiver", "?")
-        gp       = tx.get("gasPrice", "?")
+        gp       = tx.get("gasprice", "?")
         try:
             egld = int(value) / 1e18
             val_str = f"{egld:.5f}"

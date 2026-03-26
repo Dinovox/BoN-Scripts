@@ -1,0 +1,17 @@
+{
+    "shard-0": {
+        "deployer_pem": "deploy-wallets/shard-0/wallet_000.pem",
+        "tx_hash": "f2a48f1125ade0d3db0e44c4b1d006b6ab038e27565735caad611fdc87ccc0c7",
+        "contract": "erd1qqqqqqqqqqqqqpgqcedk2c63prd9avzcf67ler6ev79clf7pz2yqm7d6a7"
+    },
+    "shard-1": {
+        "deployer_pem": "deploy-wallets/shard-1/wallet_000.pem",
+        "tx_hash": "1b5209a69541bff7976048ae743655fccab9f1a3f42ba92e66d7229894a962fb",
+        "contract": "erd1qqqqqqqqqqqqqpgqp0aq3n0qzwfac6qd4gx5hyrc62c2fmtlme7s0kj679"
+    },
+    "shard-2": {
+        "deployer_pem": "deploy-wallets/shard-2/wallet_000.pem",
+        "tx_hash": "b9e2b7a59492748d23573da5d7b012c9ca8184e7c22afdba8d7a54693cde7e59",
+        "contract": "erd1qqqqqqqqqqqqqpgq0z7zzhjqm2lgtvhqwxg4gtpjr9wq2j6pvmrqvhveyw"
+    }
+}

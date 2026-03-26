@@ -21,3 +21,16 @@ WEGLD_WRAP_SC_SHARD =["erd1qqqqqqqqqqqqqpgqvc7gdl0p4s97guh498wgz75k8sav6sjfjlwqh
 
 
 WEGLD_USDC_SC_POOL = "erd1qqqqqqqqqqqqqpgqeel2kumf0r8ffyhth7pqdujjat9nx0862jpsg2pqaq"
+
+# Adresses des déployeurs de smart contracts
+DEPLOYER_ADDRESS =[
+    "erd1zl4wdvn06a9hlwq0zncv4nww5x6ag54jjs5e2leeu6qrjy7rz2yqa9n8n7",
+    "erd1v2c874mqpt6xcav24x7cpeygakmzcn6hj5yyuzm9ezjjens3me7sx00wtk",
+    "erd13v8qfm6lae558nq9cj8q9p830jvtfq3wrj9p5a6vy9dvfa7mvmrqdc25mp"
+]
+
+FORWARDER_SC_ADDRESS = [
+    "erd1qqqqqqqqqqqqqpgqcedk2c63prd9avzcf67ler6ev79clf7pz2yqm7d6a7",
+    "erd1qqqqqqqqqqqqqpgqp0aq3n0qzwfac6qd4gx5hyrc62c2fmtlme7s0kj679",
+    "erd1qqqqqqqqqqqqqpgq0z7zzhjqm2lgtvhqwxg4gtpjr9wq2j6pvmrqvhveyw"
+]
