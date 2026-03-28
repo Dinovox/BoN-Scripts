@@ -1,0 +1,49 @@
+{
+  "_comment": "Challenge 5 Configuration — Fill ADMIN_WALLET_ADDRESS and TARGET_WALLET_ADDRESS before launching at 15h tomorrow",
+
+  "ADMIN_WALLET_ADDRESS": "erd1cjjuju9sns6rrgrmndwcjmvpqkpruuqdvl00z7ruv8r3mwcu0v6qzjrm2q",
+  "TARGET_WALLET_ADDRESS": "erd1s0hzpn90yje34n4vth6vl0vlzd4uz7xz5y49mlak3dwacnkcfkwsl5nnhq",
+
+  "NETWORK": {
+    "API_URL": "https://api.battleofnodes.com",
+    "CHAIN_ID": "B",
+    "BLOCK_TIME_MS": 600,
+    "TX_POLL_INTERVAL_MS": 500
+  },
+
+  "BULK": {
+    "BULK_SIZE": 95,
+    "GAS_PRICE_MULTIPLIER": 1.5,
+    "GAS_PRICE_BASE": 1000000000,
+    "GAS_LIMIT_PER_TX": 80000,
+    "TX_INTERVAL_MS": 20,
+    "MAX_PARALLEL_TXS": 8,
+    "TX_VALUE_EGLD": "0",
+    "TX_DATA": "challenge5:ping"
+  },
+
+  "RETRY": {
+    "MAX_ATTEMPTS": 3,
+    "RETRY_DELAY_MS": 2000,
+    "TX_TIMEOUT_MS": 30000
+  },
+
+  "LISTENER": {
+    "POLL_INTERVAL_MS": 500,
+    "MAX_TX_AGE_MS": 60000,
+    "LOOKBACK_TX_COUNT": 20,
+    "MIN_COMMAND_INTERVAL_S": 10
+  },
+
+  "INTERPRETER": {
+    "CONFIDENCE_THRESHOLD": 0.6,
+    "ADVERSARIAL_DETECTION": true,
+    "ADVERSARIAL_PENALTY": 0.3
+  },
+
+  "LOGGING": {
+    "LEVEL": "debug",
+    "LOG_FILE": "challenge5.log",
+    "LOG_TX_HASHES": true
+  }
+}
